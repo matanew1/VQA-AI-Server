@@ -1,16 +1,16 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
-from transformers import pipeline
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import tempfile
 import logging
+from transformers import pipeline
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
 
-# Set the cache directory for Hugging Face models
+# Set the cache directory for Hugging Face models early
 os.environ['TRANSFORMERS_CACHE'] = '/tmp/huggingface_cache'
 
 app = FastAPI()
@@ -23,14 +23,13 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# Initialize the VQA pipeline
 try:
-    # Initialize the VQA pipeline
     vqa_pipe = pipeline("visual-question-answering", model="Salesforce/blip-vqa-capfilt-large", max_new_tokens=20)
     logger.info("VQA pipeline initialized successfully")
 except Exception as e:
     logger.error(f"Error initializing VQA pipeline: {e}")
     raise HTTPException(status_code=500, detail="Error initializing VQA pipeline")
-
 
 @app.post('/answer_question')
 async def answer_question(image: UploadFile = File(...), question: str = Form(...)):
