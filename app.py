@@ -1,17 +1,7 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-import os
-import tempfile
-import logging
 from transformers import pipeline
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger()
-
-# Set the cache directory for Hugging Face models early
-os.environ['TRANSFORMERS_CACHE'] = '/tmp/huggingface_cache'
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
@@ -24,37 +14,39 @@ app.add_middleware(
 )
 
 # Initialize the VQA pipeline
-try:
-    vqa_pipe = pipeline("visual-question-answering", model="Salesforce/blip-vqa-capfilt-large", max_new_tokens=20)
-    logger.info("VQA pipeline initialized successfully")
-except Exception as e:
-    logger.error(f"Error initializing VQA pipeline: {e}")
-    raise HTTPException(status_code=500, detail="Error initializing VQA pipeline")
+vqa_pipe = pipeline("visual-question-answering", model="Salesforce/blip-vqa-capfilt-large", max_new_tokens=20)
+
 
 @app.post('/answer_question')
 async def answer_question(image: UploadFile = File(...), question: str = Form(...)):
     """
     This is the VQA API
-    Call this API passing an image and a question about the image.
+    Call this api passing an image and a question about the image
+    ---
+    parameters:
+      - name: image
+        in: formData
+        type: file
+        required: true
+      - name: question
+        in: formData
+        type: string
+        required: true
+    responses:
+      200:
+        description: Returns the answer to the question about the image
     """
-    try:
-        # Save the uploaded image to a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            temp_file.write(await image.read())
-            temp_file_path = temp_file.name
+    # Save the image locally
+    image_path = 'temp_image.jpg'
+    with open(image_path, 'wb') as f:
+        f.write(await image.read())
 
-        # Use the VQA pipeline to get the answer
-        result = vqa_pipe(image=temp_file_path, question=question)
+    # Use the VQA pipeline to get the answer
+    result = vqa_pipe(image=image_path, question=question)
 
-        # Clean up the temporary file
-        os.remove(temp_file_path)
+    # Return the answer as JSON
+    return JSONResponse(content={'answer': result[0]['answer']})
 
-        # Return the answer as JSON
-        return JSONResponse(content={'answer': result[0]['answer']})
-
-    except Exception as e:
-        logger.error(f"Error processing the image and question: {e}")
-        raise HTTPException(status_code=500, detail="Error processing the image and question")
 
 if __name__ == '__main__':
     import uvicorn
